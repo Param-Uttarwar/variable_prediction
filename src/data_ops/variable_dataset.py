@@ -6,15 +6,16 @@ import numpy as np
 import pandas as pd
 from torch import Tensor
 from torch.utils.data import Dataset
+import torch
 
-from data_ops.data_utils import (VariableData, create_rolling_data,
+from src.data_ops.data_utils import (VariableData, create_rolling_data,
                                  find_correlated_indices, process_data)
 
 logger = logging.getLogger(__name__)
 
 
 class VariableDataset(Dataset):
-    def __init__(self, device: str, x_len: int = 6) -> None:
+    def __init__(self, device: str = 'cpu', x_len: int = 6) -> None:
         """Dataset class
 
         :param x_len: length of past information used to next timestep prediction
@@ -29,10 +30,10 @@ class VariableDataset(Dataset):
         variable values for past timesteps, X2 is the correlated variable data for past and next timestep
         """
 
-        df = pd.read_csv(path)
-        df = process_data(df)
-        var_metadatas = find_correlated_indices(df)
-        data = create_rolling_data(df, var_metadatas, self._x_len)
+        self._df = pd.read_csv(path)
+        self._df = process_data(self._df)
+        var_metadatas = find_correlated_indices(self._df)
+        data = create_rolling_data(self._df, var_metadatas, self._x_len)
         self._data = data
         logging.info(f"Data parsed and loaded of length {len(data)}")
 
@@ -52,9 +53,13 @@ class VariableDataset(Dataset):
         x1 = (datapoint.x1 - x1_mean) / x1_std
         x2 = (datapoint.x2 - x2_mean[:, None]) / x2_std[:, None]
         y = (datapoint.y - x1_mean) / x1_std
-
+        
+        # Predict only the difference from last timestamp
+        y = y - x1[0,-1]
+        # Clip unecssarily high values
+        y = np.clip(y,-2,2)
         return (
             Tensor(x1).to(self._device),
-            Tensor(x2[0, None, :]).to(self._device),
+            Tensor(x2).to(self._device),
             Tensor([y]).to(self._device),
         )

@@ -1,4 +1,4 @@
 model_config:
-  lr: 0.01
+  lr: 0.001
 batch_size: 32
 # model_filepath: 'lightning_logs\version_1\checkpoints\epoch=3-step=1848.ckpt'

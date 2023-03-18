@@ -32,8 +32,8 @@ def fc_block(
     dropout_prob: Optional[float] = None,
     batch_norm: bool = False,
 ):
+    
     block = [nn.Linear(in_features=input, out_features=output), nn.ReLU()]
-
     # Add Dropout and Batch norm
     if dropout_prob is not None:
         if dropout_prob > 1.0 or dropout_prob < 0.0:

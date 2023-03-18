@@ -5,7 +5,8 @@ from typing import Any, List, Tuple
 import numpy as np
 import pandas as pd  # type: ignore
 from nptyping import Float, NDArray
-
+from torch import Tensor
+import torch
 
 @dataclass
 class VariableMetadata:
@@ -23,7 +24,7 @@ class VariableData:
     """
 
     x1: NDArray[Any, Float]  # main variable
-    x2: NDArray[Any, Float]  # correlated variables
+    x2: NDArray[Any, Float] # correlated variables
     y: Float
 
     def __post_init__(self):
@@ -41,7 +42,8 @@ def process_data(df: pd.DataFrame) -> pd.DataFrame:
     """Processes data to remove all symbols and convert the strings into numbers. Removes irrelevant
     columns like dates
     """
-    df = df.drop(columns="Month")
+    if "Month" in df.columns:
+        df = df.drop(columns="Month")
     df = df.rename(columns=lambda x: re.sub("\n", "", x))
     df = df.replace("[K,B,M,T,\\%,\\n,\\n%,^\\s+,^\\s$]", "", regex=True)
     df = df.apply(pd.to_numeric)
@@ -54,10 +56,11 @@ def find_correlated_indices(
     """Calculates correlation between variables and returns the information about the
     indices of correlated variables with the main variables
 
-    :param df: data to process
+    :param df: time series data of all variables
     :param min_period: min. finite values to calculate correlation
     """
     correlations = df.corr(method="pearson", min_periods=min_period).values
+
     # Keep only upper trianglular as correlation matrix is symmetric, also reject diagonal entries(self correlation)
     correlations = np.triu(correlations, k=1)
 
@@ -83,9 +86,11 @@ def create_rolling_data(
     """
     data = []
     len_xy = x_len + 1  # including prediction value, (length of corr var data)
+
     for var_metadata in var_metadatas:
         variable = df.iloc[:, var_metadata.var_idx].values
         for i in range(variable.shape[0] - (x_len + 1)):
+
             # Reject cases with nan values
             if np.isfinite(variable[i : i + len_xy]).all():
                 x1 = variable[i : i + x_len]
@@ -106,3 +111,11 @@ def create_rolling_data(
                 )
 
     return data
+
+
+def collate(batch) -> Tuple[Tensor]:
+    x1 = torch.stack(list(map(lambda x: x[0],batch)))
+    x2 = list(map(lambda x: x[1],batch))
+    y = torch.stack(list(map(lambda x: x[2],batch)))
+    
+    return (x1,x2,y)

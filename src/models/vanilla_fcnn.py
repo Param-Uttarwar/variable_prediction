@@ -5,21 +5,24 @@ import torch
 from torch import Tensor, nn, optim, utils
 
 from config import ModelConfig
-from models.model_utils import VanilaCnnModel
+from models.model_utils import VanilaCnnModel, fc_block
 from typing import List
 
-class VanillaCnn(pl.LightningModule):
+class VanillaFcnn(pl.LightningModule):
     def __init__(
-        self, lr: float = 0.001, net: nn.Module = VanilaCnnModel(), device: str = "cpu"
+        self, lr: float = 0.001, device: str = "cpu"
     ) -> None:
         """
-        This model uses 1D CNN on first correlated variable only and given variable to extract relevant features
-        to predict value of given variable for next timestep.
+        This model takes first correlated variable data, and given variable data, passes thru an MLP and 
+        predicts the value of given variable for next timestep
         """
-
         super().__init__()
-        self.save_hyperparameters(ignore="net")
-        self._net = net
+        self.save_hyperparameters()
+        self._net = nn.Sequential(*fc_block(7,7),
+                                  *fc_block(7,7),
+                                  *fc_block(7,7),
+                                  *fc_block(7,3),
+                                  nn.Linear(3,1),)
 
     def to_batch(self, data: List[Tensor]) -> Tensor:
         """Convert a list of unequal rows of variables to a uniform batch, taking only the first variable"""
@@ -27,7 +30,7 @@ class VanillaCnn(pl.LightningModule):
 
     def training_step(self, batch, batch_idx) -> Tensor:
         x1, x2, y = batch
-        y_hat = self._net(x1, self.to_batch(x2))
+        y_hat = self._net(torch.hstack([x1[:,0,-3:], self.to_batch(x2)[:,0,-4:]]))
         loss = nn.functional.mse_loss(y_hat, y, reduction="mean")
         self.log("train_loss", loss)
 
@@ -35,16 +38,16 @@ class VanillaCnn(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx) -> None:
         x1, x2, y = batch
-        y_hat = self._net(x1, self.to_batch(x2))
+        y_hat = self._net(torch.hstack([x1[:,0,-3:], self.to_batch(x2)[:,0,-4:]]))
         loss = nn.functional.mse_loss(y_hat, y)
         self.log("val_loss", loss)
     
     def test_step(self,  batch, batch_idx) -> None:
         x1, x2, y = batch
-        y_hat = self._net(x1, self.to_batch(x2))
+        y_hat = self._net(torch.hstack([x1[:,0,-3:], self.to_batch(x2)[:,0,-4:]]))
 
-        y_up_down = torch.sign(y.squeeze() - x1[:,0,-1])
-        y_hat = torch.sign(y_hat.squeeze() - x1[:,0,-1])
+        y_up_down = torch.sign(y.squeeze())
+        y_hat = torch.sign(y_hat)
         
         return (y_hat,y_up_down)
     
